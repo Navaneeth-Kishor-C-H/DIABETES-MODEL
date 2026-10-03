@@ -10,11 +10,12 @@ import json
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -47,13 +48,25 @@ def make_model(features: list[str], frame: pd.DataFrame) -> Pipeline:
     return Pipeline([("prepare", preprocess), ("model", LogisticRegression(max_iter=1000, class_weight="balanced"))])
 
 
-def score(model, x_test, y_test) -> dict[str, float]:
+def prevalence_threshold(model, y_train, x_evaluation) -> float:
+    probability = np.sort(model.predict_proba(x_evaluation)[:, 1])[::-1]
+    positive_count = round(float(y_train.mean()) * len(probability))
+    if positive_count <= 0:
+        return 1.0
+    if positive_count >= len(probability):
+        return 0.0
+    return float((probability[positive_count - 1] + probability[positive_count]) / 2)
+
+
+def score(model, x_test, y_test, threshold: float) -> dict[str, float]:
     probability = model.predict_proba(x_test)[:, 1]
-    predicted = (probability >= 0.5).astype(int)
+    predicted = (probability >= threshold).astype(int)
     return {
         "accuracy": round(accuracy_score(y_test, predicted), 3),
         "f1": round(f1_score(y_test, predicted), 3),
         "roc_auc": round(roc_auc_score(y_test, probability), 3),
+        "threshold": threshold,
+        "confusion_matrix": confusion_matrix(y_test, predicted).tolist(),
     }
 
 
@@ -83,6 +96,7 @@ def train(data_path: str, output_path: str = "diabetes_ensemble.joblib") -> dict
     meta_test = pd.DataFrame(test_scores, columns=domain_names, index=x_test.index)
     orchestrator = LogisticRegression(max_iter=1000, class_weight="balanced")
     orchestrator.fit(meta_train, y_train)
+    threshold = prevalence_threshold(orchestrator, y_train, meta_test)
 
     bundle = {
         "domain_models": domain_models,
@@ -90,7 +104,7 @@ def train(data_path: str, output_path: str = "diabetes_ensemble.joblib") -> dict
         "domains": DOMAINS,
         "default_values": x_train[list({c for v in DOMAINS.values() for c in v})].median(numeric_only=True).to_dict(),
         "category_values": {c: sorted(x_train[c].dropna().astype(str).unique().tolist()) for c in x_train.select_dtypes(include="object")},
-        "metrics": score(orchestrator, meta_test, y_test),
+        "metrics": score(orchestrator, meta_test, y_test, threshold),
         "background_scores": meta_train.sample(min(100, len(meta_train)), random_state=42),
         "target": TARGET,
     }

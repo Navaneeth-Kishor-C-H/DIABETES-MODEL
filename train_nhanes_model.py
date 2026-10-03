@@ -12,11 +12,12 @@ import json
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -44,19 +45,31 @@ def make_model(features: list[str], frame: pd.DataFrame) -> Pipeline:
     numeric = [c for c in features if pd.api.types.is_numeric_dtype(frame[c])]
     categorical = [c for c in features if c not in numeric]
     preprocessing = ColumnTransformer([
-        ("numeric", Pipeline([("impute", SimpleImputer(strategy="median")), ("scale", StandardScaler())]), numeric),
-        ("categorical", Pipeline([("impute", SimpleImputer(strategy="most_frequent")), ("encode", OneHotEncoder(handle_unknown="ignore"))]), categorical),
+        ("numeric", Pipeline([("impute", SimpleImputer(strategy="median", add_indicator=True)), ("scale", StandardScaler())]), numeric),
+        ("categorical", Pipeline([("impute", SimpleImputer(strategy="most_frequent", add_indicator=True)), ("encode", OneHotEncoder(handle_unknown="ignore"))]), categorical),
     ])
     return Pipeline([("preprocess", preprocessing), ("model", LogisticRegression(max_iter=2000, class_weight="balanced"))])
 
 
-def metrics(model, x, y) -> dict[str, float]:
+def prevalence_threshold(model, y_train, x_evaluation) -> float:
+    probability = np.sort(model.predict_proba(x_evaluation)[:, 1])[::-1]
+    positive_count = round(float(y_train.mean()) * len(probability))
+    if positive_count <= 0:
+        return 1.0
+    if positive_count >= len(probability):
+        return 0.0
+    return float((probability[positive_count - 1] + probability[positive_count]) / 2)
+
+
+def metrics(model, x, y, threshold) -> dict[str, float]:
     probability = model.predict_proba(x)[:, 1]
-    prediction = (probability >= 0.5).astype(int)
+    prediction = (probability >= threshold).astype(int)
     return {
         "accuracy": round(accuracy_score(y, prediction), 3),
         "f1": round(f1_score(y, prediction), 3),
         "roc_auc": round(roc_auc_score(y, probability), 3),
+        "threshold": threshold,
+        "confusion_matrix": confusion_matrix(y, prediction).tolist(),
     }
 
 
@@ -83,6 +96,7 @@ def main():
     meta_test = pd.DataFrame(test_scores, index=x_test.index)
     orchestrator = LogisticRegression(max_iter=2000, class_weight="balanced")
     orchestrator.fit(meta_train, y_train)
+    threshold = prevalence_threshold(orchestrator, y_train, meta_test)
 
     feature_list = [feature for features in DOMAINS.values() for feature in features]
     numeric_features = [f for f in feature_list if pd.api.types.is_numeric_dtype(x_train[f])]
@@ -94,7 +108,7 @@ def main():
         "orchestrator": orchestrator,
         "domains": {key: value for key, value in DOMAINS.items() if value},
         "unavailable_domains": unavailable,
-        "metrics": metrics(orchestrator, meta_test, y_test),
+        "metrics": metrics(orchestrator, meta_test, y_test, threshold),
         "sample_sizes": {"training": len(x_train), "test": len(x_test), "total": len(data)},
         "positive_rate": round(float(y.mean()), 3),
         "background_scores": meta_train.sample(min(100, len(meta_train)), random_state=42),

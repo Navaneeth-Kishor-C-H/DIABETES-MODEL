@@ -36,9 +36,12 @@ def main():
     })
 
     body = read("BMX_J", ["BMXBMI", "BMXWAIST", "BMXHIP"]).rename(columns={"BMXBMI": "bmi", "BMXWAIST": "waist_cm", "BMXHIP": "hip_cm"})
+    body[["bmi", "waist_cm", "hip_cm"]] = body[["bmi", "waist_cm", "hip_cm"]].mask(body[["bmi", "waist_cm", "hip_cm"]].abs() < 1e-6)
     body["waist_to_hip_ratio"] = body["waist_cm"] / body["hip_cm"]
 
     bp = read("BPX_J", ["BPXSY1", "BPXSY2", "BPXSY3", "BPXDI1", "BPXDI2", "BPXDI3", "BPXPLS"])
+    bp_measurements = ["BPXSY1", "BPXSY2", "BPXSY3", "BPXDI1", "BPXDI2", "BPXDI3", "BPXPLS"]
+    bp[bp_measurements] = bp[bp_measurements].mask(bp[bp_measurements].abs() < 1e-6)
     bp["systolic_bp"] = bp[["BPXSY1", "BPXSY2", "BPXSY3"]].mean(axis=1)
     bp["diastolic_bp"] = bp[["BPXDI1", "BPXDI2", "BPXDI3"]].mean(axis=1)
     bp = bp[["SEQN", "systolic_bp", "diastolic_bp", "BPXPLS"]].rename(columns={"BPXPLS": "heart_rate"})
@@ -56,6 +59,7 @@ def main():
     heart = read("MCQ_J", ["MCQ160C"]).assign(cardiovascular_history=lambda x: yes_no(x["MCQ160C"]))[["SEQN", "cardiovascular_history"]]
 
     activity = read("PAQ_J", ["PAQ650", "PAD660"])
+    activity[["PAQ650", "PAD660"]] = activity[["PAQ650", "PAD660"]].mask(activity[["PAQ650", "PAD660"]].abs() < 1e-6)
     activity["physical_activity_minutes_per_week"] = activity["PAQ650"].map({1.0: 1, 2.0: 0}) * activity["PAD660"] * 7
     activity = activity[["SEQN", "physical_activity_minutes_per_week"]]
     smoking = read("SMQ_J", ["SMQ020", "SMQ040"])
@@ -76,6 +80,14 @@ def main():
     for table in tables[1:]:
         data = data.merge(table, on="SEQN", how="left")
     data = data[data["age"] >= 18].copy()
+    continuous_columns = [
+        "bmi", "waist_cm", "hip_cm", "systolic_bp", "diastolic_bp", "heart_rate",
+        "cholesterol_total", "hdl_cholesterol", "ldl_cholesterol", "triglycerides",
+        "glucose_fasting", "insulin_level", "hba1c", "physical_activity_minutes_per_week",
+        "alcohol_drinks_per_day", "sleep_hours_per_day", "diet_energy_kcal", "diet_sugar_g",
+        "diet_fiber_g", "diet_saturated_fat_g",
+    ]
+    data[continuous_columns] = data[continuous_columns].mask(data[continuous_columns].abs() < 1e-6)
     data.to_csv(OUT, index=False)
     print(f"Saved {OUT} with {len(data):,} adult participants and {len(data.columns)} columns.")
     print("Diagnosed-diabetes records:", int(data["diagnosed_diabetes"].notna().sum()))

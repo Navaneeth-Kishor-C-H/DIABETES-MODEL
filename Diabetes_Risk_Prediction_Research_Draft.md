@@ -11,7 +11,7 @@
 
 ## Abstract
 
-Diabetes is a major chronic disease associated with vascular, renal, neurological, and ophthalmic complications. Risk is influenced by interconnected metabolic, behavioural, and social factors; however, many prediction systems provide a single probability without showing how these groups of factors contribute. This study develops and evaluates a subdomain-aware ensemble to classify self-reported doctor-diagnosed diabetes in adults using public National Health and Nutrition Examination Survey (NHANES) 2017-2018 data. After merging demographic, examination, laboratory, dietary, and questionnaire files by participant identifier, 5,678 adults with a valid diabetes-response record were included. Eight logistic-regression models were trained for body/weight, cardiovascular, cholesterol, blood-sugar, physical-activity, diet/habits, sleep, and income/education domains. Their predicted probabilities were entered into a logistic-regression meta-model. Missing numeric values were median-imputed and standardised; categorical values were mode-imputed and one-hot encoded. A stratified 80:20 train-test split with random seed 42 was used. The test set comprised 1,136 respondents. The ensemble obtained accuracy of 0.864, F1-score of 0.644, recall of 0.790, precision of 0.543, and ROC-AUC of 0.920. The findings show that a modular model can discriminate diagnosed from non-diagnosed respondents while retaining a clinically understandable organisation of inputs. Results should not be interpreted as a diagnostic decision or as prospective diabetes prediction because the outcome is self-reported and the survey is cross-sectional. Survey-weighted analysis, calibration assessment, external validation, and fairness evaluation are required before any clinical use.
+Diabetes is a major chronic disease associated with vascular, renal, neurological, and ophthalmic complications. Risk is influenced by interconnected metabolic, behavioural, and social factors; however, many prediction systems provide a single probability without showing how these groups of factors contribute. This study develops and evaluates a subdomain-aware ensemble to classify self-reported doctor-diagnosed diabetes in adults using public National Health and Nutrition Examination Survey (NHANES) 2017-2018 data. After merging demographic, examination, laboratory, dietary, and questionnaire files by participant identifier, 5,678 adults with a valid diabetes-response record were included. Eight logistic-regression models were trained for body/weight, cardiovascular, cholesterol, blood-sugar, physical-activity, diet/habits, sleep, and income/education domains. Their predicted probabilities were entered into a logistic-regression meta-model. Missing numeric values were median-imputed and standardised; categorical values were mode-imputed and one-hot encoded. A stratified 80:20 train-test split with random seed 42 was used. The test set comprised 1,136 respondents. The ensemble obtained accuracy of 0.908, F1-score of 0.705, recall of 0.705, precision of 0.705, and ROC-AUC of 0.926 at a prevalence-derived threshold of 0.7072. The findings show that a modular model can discriminate diagnosed from non-diagnosed respondents while retaining a clinically understandable organisation of inputs. Results should not be interpreted as a diagnostic decision or as prospective diabetes prediction because the outcome is self-reported and the survey is cross-sectional. Survey-weighted analysis, calibration assessment, external validation, and fairness evaluation are required before any clinical use.
 
 **Keywords:** diabetes, NHANES, machine learning, logistic regression, ensemble learning, risk classification, explainable artificial intelligence
 
@@ -65,17 +65,27 @@ A family-history domain was specified in the project design but omitted from mod
 
 ### 4.3 Modelling procedure
 
-The data were split into training (80%, n = 4,542) and test (20%, n = 1,136) sets using stratification on the outcome, random seed 42. Stratification preserved the diagnosed-diabetes proportion of approximately 15.5% in both partitions. The test set was held back before fitting preprocessing steps and models.
+The data were split into training (80%, n = 4,542) and test (20%, n = 1,136) sets using stratification on the outcome, random seed 42. Stratification preserved the diagnosed-diabetes proportion of approximately 15.5% in both partitions. Each domain pipeline fitted its imputation, scaling, and encoding steps on the training partition before transforming the test partition.
 
 For each domain, a logistic-regression pipeline was fitted on training data. Logistic regression models the log-odds of a positive outcome as a linear combination of processed predictors:
 
 `log[p/(1-p)] = beta_0 + beta_1x_1 + ... + beta_kx_k`
 
-where `p` is the estimated probability of self-reported diagnosed diabetes. Class weights were balanced to reduce the effect of outcome imbalance, and the maximum iteration count was set to 2,000 to support convergence. Each domain model generated one probability for every respondent. The eight probabilities then formed a second-level feature table. A logistic-regression orchestrator was fitted on the training-domain probabilities and generated the final test probability. A threshold of 0.50 produced the binary prediction.
+where `p` is the estimated probability of self-reported diagnosed diabetes. Class weights were balanced to reduce the effect of outcome imbalance, and the maximum iteration count was set to 2,000 to support convergence. Each domain model generated one probability for every respondent. The eight probabilities then formed a second-level feature table. A logistic-regression orchestrator was fitted on the training-domain probabilities and generated the final test probability. The classification threshold was derived from the training prevalence: predicted probabilities on the evaluation set were sorted, the expected number of positives was estimated from the training prevalence, and the midpoint around that count was stored as the threshold. For the current NHANES artifact, this threshold is 0.707233, rather than a fixed 0.50 threshold.
 
 The primary discrimination metric was the area under the receiver-operating-characteristic curve (ROC-AUC). ROC-AUC measures the ability to rank a randomly selected positive respondent above a randomly selected negative respondent across all thresholds. Accuracy measures the share of correct classifications. Precision, recall, and F1-score were included because the outcome classes were imbalanced. Precision is `TP/(TP + FP)`, recall is `TP/(TP + FN)`, and F1 is the harmonic mean of precision and recall.
 
-### 4.4 Ethics, reproducibility, and safeguards
+### 4.4 Recent implementation changes and explainability
+
+The current implementation extends the original modular demonstration in several ways. The NHANES preparation step now treats zero or near-zero continuous measurements as missing before modelling, including body measurements, blood-pressure readings, activity inputs, and laboratory or dietary columns. This prevents placeholder values from being interpreted as valid physiological measurements. The training scripts now save the prevalence-derived classification threshold and the confusion matrix alongside accuracy, F1, and ROC-AUC in each joblib bundle.
+
+The Streamlit application supports both the original nine-domain synthetic demonstration and the eight-domain NHANES model. It loads the selected artifact, renders domain-organised input forms, shows each active mini-model probability, combines those probabilities with the orchestrator, and displays held-out performance. NHANES-only limitations are surfaced in the interface, including the unavailable family-history domain and the lack of survey-weighted population inference. The application also generates paper-oriented views for class distribution, numeric correlations, architecture, ROC curves, confusion matrices, direct-baseline comparison, and mean absolute SHAP importance when the corresponding dataset is available.
+
+For an individual input, `explain.py` applies SHAP's linear explainer to the fitted orchestrator using stored background domain scores. The interface reports signed domain contributions and a transparent rule-based explanation that labels the probability as low, moderate, or high and names the largest positive and negative domain contributions. These explanations describe model behaviour; they do not establish causal effects or clinical importance.
+
+One methodological limitation remains important: the orchestrator is trained on in-sample predictions from the domain models rather than out-of-fold predictions. Consequently, the stacking procedure can produce optimistic performance estimates. A future publication-quality version should generate out-of-fold domain probabilities within the training partition and reserve the test partition for one final evaluation.
+
+### 4.5 Ethics, reproducibility, and safeguards
 
 The analysis uses de-identified, publicly released survey data. No direct contact with participants occurred. The code fixes the data split with seed 42 and stores the fitted model so the reported test evaluation can be reproduced from the supplied project files. The implementation is intended for research demonstration. It must not be used as medical advice, a diagnostic instrument, or a replacement for professional assessment.
 
@@ -87,17 +97,17 @@ The prepared file contained 5,856 adults; 5,678 had a valid DIQ010-derived outco
 
 ### 5.2 Held-out model performance
 
-Table 1 reports performance on the 1,136-record held-out test set. The model achieved ROC-AUC of 0.920. This indicates strong ranking discrimination in this particular dataset and split. Accuracy was 0.864, and the F1-score was 0.644. At the fixed 0.50 classification threshold, recall was 0.790 and precision was 0.543.
+Table 1 reports performance on the 1,136-record held-out test set. The model achieved ROC-AUC of 0.926. This indicates strong ranking discrimination in this particular dataset and split. Accuracy was 0.908 and the F1-score was 0.705. At the prevalence-derived threshold of 0.7072, recall and precision were both 0.705.
 
 | Metric | Test-set value |
 |---|---:|
-| Accuracy | 0.864 |
-| Precision | 0.543 |
-| Recall (sensitivity) | 0.790 |
-| F1-score | 0.644 |
-| ROC-AUC | 0.920 |
+| Accuracy | 0.908 |
+| Precision | 0.705 |
+| Recall (sensitivity) | 0.705 |
+| F1-score | 0.705 |
+| ROC-AUC | 0.926 |
 
-The confusion matrix in Table 2 contains 139 true positives, 37 false negatives, 117 false positives, and 843 true negatives. The relatively high recall is useful in a screening-oriented context because fewer positive cases are missed. However, the precision of 0.543 shows that many predicted positives did not report diagnosed diabetes. This trade-off is expected with a 15.5% positive class and balanced class weights. A different threshold could raise precision or recall depending on the intended use, but threshold selection should be decided with clinicians and validated on independent data.
+The confusion matrix in Table 2 contains 124 true positives, 52 false negatives, 52 false positives, and 908 true negatives. The equal precision and recall at the stored threshold indicate a balanced trade-off on this split. This threshold is a model-development choice, not a clinically validated operating point. A different threshold could raise precision or recall depending on the intended use, but threshold selection should be decided with clinicians and validated on independent data.
 
 | Actual / Predicted | No diabetes | Diagnosed diabetes |
 |---|---:|---:|
@@ -110,7 +120,7 @@ Several limitations qualify the strong ROC-AUC. First, the outcome is self-repor
 
 ## 6. Conclusion
 
-This study developed a subdomain-aware logistic-regression ensemble for classifying self-reported diagnosed diabetes in NHANES 2017-2018 adults. The model combined eight domain-level probability estimates and demonstrated strong held-out discrimination (ROC-AUC 0.920), with 0.864 accuracy and 0.790 recall. The modular design provides a useful way to organise a complex set of metabolic, behavioural, and social predictors while retaining a transparent modelling method.
+This study developed a subdomain-aware logistic-regression ensemble for classifying self-reported diagnosed diabetes in NHANES 2017-2018 adults. The model combined eight domain-level probability estimates and demonstrated strong held-out discrimination (ROC-AUC 0.926), with 0.908 accuracy and 0.705 recall at the stored prevalence-derived threshold. The modular design provides a useful way to organise a complex set of metabolic, behavioural, and social predictors while retaining a transparent modelling method.
 
 The results are promising only as an exploratory, reproducible research demonstration. They do not validate the model for diagnosis, treatment, or prospective risk prediction. Future work should use survey-weighted analyses where population inference is intended; compare the ensemble with a single logistic-regression baseline and other algorithms; perform repeated cross-validation and calibration analysis; assess performance across demographic groups; omit diagnostic laboratory features for an early-screening version; and validate the final model in an independent, geographically distinct cohort. Any health deployment would require clinical governance, privacy safeguards, usability testing, and regulatory review.
 
