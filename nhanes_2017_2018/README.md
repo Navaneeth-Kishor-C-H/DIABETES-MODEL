@@ -1,19 +1,19 @@
 # NHANES 2017–2018 real-world data
 
-`raw/` contains public files downloaded from the CDC NHANES 2017–2018 release. Run from the project root:
+`raw/` contains public files from the CDC NHANES 2017–2018 release. Run commands from the project root:
 
 ```powershell
-& "C:\Users\navan\AppData\Local\Programs\Python\Python312\python.exe" prepare_nhanes.py
+python prepare_nhanes.py
 ```
 
-This creates `nhanes_diabetes_analysis.csv`, merged by `SEQN` for adults age 18+.
+This creates `nhanes_2017_2018/nhanes_diabetes_analysis.csv`, merged by `SEQN` for adults age 18+.
 
 ## Train the real-world model
 
 From the project root, run:
 
 ```powershell
-& "C:\Users\navan\AppData\Local\Programs\Python\Python312\python.exe" train_nhanes_model.py
+python train_nhanes_model.py
 ```
 
 This produces `nhanes_ensemble.joblib` and does not replace the synthetic-data model. The model has eight active subdomains; Family History is transparently omitted because no direct matching variable is available in the selected NHANES cycle.

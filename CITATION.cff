@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "A Subdomain-Aware Stacked Logistic-Regression Classifier for Self-Reported Doctor-Diagnosed Diabetes in Adults"
+authors:
+  - name: "Nandana P"
+    affiliation: "Christ University, Bangalore"
+  - name: "Navaneeth Kishor C H"
+    affiliation: "Christ University, Bangalore"
+  - name: "Balakrishnan C"
+    affiliation: "Christ University, Bangalore"
+license: MIT
+# Add the paper's DOI here after publication.
