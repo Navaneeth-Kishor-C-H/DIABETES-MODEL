@@ -55,12 +55,8 @@ def resolve_dataset_path(model_choice: str):
     project_root = Path(__file__).resolve().parent
     if model_choice.startswith("Synthetic"):
         candidates = [
-            project_root / "Diabetes_and_LifeStyle_Dataset .csv",
             project_root / "Diabetes_and_LifeStyle_Dataset.csv",
-            project_root / "data" / "Diabetes_and_LifeStyle_Dataset .csv",
             project_root / "data" / "Diabetes_and_LifeStyle_Dataset.csv",
-            Path(r"C:\Users\navan\Downloads\Diabetes_and_LifeStyle_Dataset .csv"),
-            Path(r"C:\Users\nanda\Downloads\Diabetes_and_LifeStyle_Dataset .csv"),
         ]
     else:
         candidates = [
